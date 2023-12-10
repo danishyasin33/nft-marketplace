@@ -12,14 +12,13 @@ function App () {
   const [tokenURI, setTokenURI] = useState('https://s3-prod.dogtopia.com/wp-content/uploads/2019/03/0.jpg');
   const [tokenURIValue, settokenURIValue] = useState('');
   const [tokens, setTokens] = useState([
-    { tokenId: 1, tokenURI: 'https://s3-prod.dogtopia.com/wp-content/uploads/2019/03/0.jpg' }
+    { tokenId: 1, tokenURI: 'https://s3-prod.dogtopia.com/wp-content/uploads/2019/03/0.jpg' } // default token
   ])
 
   const [mintAddress, setMintAddress] = useState('');
   const [mintTokenNum, setMintTokenNum] = useState(0);
 
   const [minted, setMinted] = useState(false);
-
 
   useEffect(() => {
     if (window.ethereum) {
@@ -35,7 +34,7 @@ function App () {
       if (typeof web3 !== 'undefined') {
         var web3 = new Web3(web3.currentProvider);
       } else {
-        var web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:7545'));
+        var web3 = new Web3(new Web3.providers.HttpProvider('https://eth-sepolia.g.alchemy.com/v2/gTQ-Wlg_S5FB_8Zj-IQcxIqockuAjxDH'));
       }
 
       setContract(new web3.eth.Contract(NFT_CONTRACT_ABI, NFT_CONTRACT_ADDRESS))
@@ -71,7 +70,7 @@ function App () {
       const balance = await nftContract.methods.balanceOf(address).call();
       console.log('balance: ', balance)
       if (balance === 0) return;
-
+      const newTokens = [];
       for (let i = 0; i < balance; i++) {
         const tokenId = await nftContract.methods.tokenOfOwnerByIndex(address, i).call();
         const tokenURI = await nftContract.methods.tokenURI(tokenId).call();
@@ -80,9 +79,9 @@ function App () {
         if (tokens.filter(token => token.tokenId === tokenId).length > 0) {
           return;
         }
-
-        setTokens([...tokens, { tokenId, tokenURI }])
+        newTokens.push({ tokenId, tokenURI });
       }
+      setTokens([...tokens, ...newTokens])
     }
     getCollection();
   }, [address])
@@ -93,7 +92,28 @@ function App () {
 
     if (!nftContract || !address || !tokenPrice) return;
     try {
-      nftContract.methods.safeMint(mintAddress, mintTokenNum, tokenURI).send({ from: address, value: tokenPrice, gas: 3000000 })
+
+      //set up your Ethereum transaction
+      const transactionParameters = {
+        to: NFT_CONTRACT_ADDRESS, // Required except during contract publications.
+        from: address, // must match user's active address.
+        value: tokenPrice,
+        'data': nftContract.methods.safeMint(mintAddress, mintTokenNum, tokenURI).encodeABI() //make call to NFT smart contract 
+      };
+
+      //sign transaction via Metamask
+      try {
+        await window.ethereum
+          .request({
+            method: 'eth_sendTransaction',
+            params: [transactionParameters],
+          });
+      } catch (error) {
+        return {
+          success: false,
+          status: "😥 Something went wrong: " + error.message
+        }
+      }
 
       setMinted(true);
       setTimeout(() => {
@@ -107,11 +127,28 @@ function App () {
   const burnToken = async (tokenId) => {
     console.log('tokenId: ', tokenId)
     if (!nftContract || !address) return;
+
+    //set up your Ethereum transaction
+    const transactionParameters = {
+      to: NFT_CONTRACT_ADDRESS, // Required except during contract publications.
+      from: address, // must match user's active address.
+      'data': nftContract.methods.burn(tokenId).encodeABI() //make call to NFT smart contract 
+    };
+
+    //sign transaction via Metamask
     try {
-      nftContract.methods.burn(tokenId).send({ from: address, gas: 3000000 })
+      await window.ethereum
+        .request({
+          method: 'eth_sendTransaction',
+          params: [transactionParameters],
+        });
       setTokens(tokens.filter(token => token.tokenId !== tokenId));
     } catch (error) {
-      console.log('error: ', error)
+      console.log("😥 Something went wrong: " + error.message)
+      return {
+        success: false,
+        status: "😥 Something went wrong: " + error.message
+      }
     }
   }
 
